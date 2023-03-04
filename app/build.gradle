@@ -1,0 +1,188 @@
+// https://docs.gradle.org/
+// https://github.com/TheBoegl/gradle-launch4j
+description = 'app'
+import java.text.SimpleDateFormat
+
+buildscript{
+    repositories {
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies{
+        classpath "edu.sc.seis.launch4j:launch4j:2.4.9"
+    }
+}
+
+println  "RootProject:${project.rootProject}"
+println  "RootDir:${project.rootDir}"
+println  "ProjectDir:${project.projectDir}"
+
+def jdkPath = new File(project.rootDir.path, javaHome).toPath().normalize().toAbsolutePath()
+def jrePath = new File(project.rootDir, jreBundle).toPath().normalize().toAbsolutePath()
+println "JDK path=$jdkPath"
+println "JRE path=$jrePath"
+
+apply plugin: 'application'
+apply plugin: 'edu.sc.seis.launch4j'
+
+// 必须指定编码，否则可能会编译不过
+compileJava.options.encoding = 'UTF-8'
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+// Required for run in SDK, do not remove this line.
+mainClassName = "$mainclass"
+
+def exeTitle="MediaConvert"
+def exeFileName = "${exeTitle}.exe"
+
+def dateStr = new SimpleDateFormat("yyyyMMdd-HHmm").format(new Date())
+def gitVersion = getGitVersion()
+def gitVersionShort = gitVersion.substring(0, 10)
+//def outputFileName = "$exeTitle-$dateStr"
+def outputFileName = "$exeTitle-$versionName"
+
+// The name of the build dir
+buildDir = 'build-target'
+// Default archive name
+archivesBaseName = 'MediaConvert'
+// Version name of the jar (do not change, leave it empty)
+version = ''
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+        resources {
+            srcDirs = ['resource']
+        }
+    }
+}
+
+compileJava {
+    println "----do compileJava"
+    options.fork = true
+    //options.forkOptions.executable = "$javaHome/bin/javac"
+    options.forkOptions.executable = "$jdkPath/bin/javac"
+}
+
+jar {
+    println "----do task jar"
+    manifest {
+        println "create manifest"
+        attributes  'BuildVersion' : gitVersion,
+                    'BuildDate' : dateStr,
+                    'Class-Path' : getLibsClassPath(),
+                    'Main-Class' : mainclass
+    }
+    exclude('**/*.xsd') 
+    exclude('**/meta') 
+}
+
+task exe(type: edu.sc.seis.launch4j.tasks.Launch4jLibraryTask) {
+    mainClassName = mainclass
+    outfile = exeFileName
+    
+    // headerType = 'gui'
+    bundledJrePath = 'jre'
+    jreRuntimeBits = '64'
+    bundledJre64Bit = true
+//    dontWrapJar = true
+    
+    // "-noverify" for jvm1.8,  
+    // "-XX:-UseSplitVerifier" for jvm1.7 
+    jvmOptions = ['-noverify']
+}
+
+exe.dependsOn build
+exe {
+    doLast {
+        // ---- Build x64 version
+        buildVersion("$project.buildDir/deploy/${outputFileName}", jrePath)
+        buildJarVersion("$project.buildDir/deployJar/${outputFileName}")
+        println "---- Build ok ----"
+        println "Build: $outputFileName"
+        println "Version: $versionName"
+        println "BuildVersion: $gitVersion"
+        println "BuildDate: $dateStr"
+    }
+}
+
+tasks.withType(JavaExec) { // runtime options:
+    enableAssertions false
+}
+
+def buildVersion(buildDir, jrePath) {
+    // Copy jre
+    copy {
+        from (jrePath)
+        into ("$buildDir/jre")
+        include ('**/*')
+    }
+    // Copy lib from launch4j
+    copy {
+        from ("$project.buildDir/launch4j/lib")
+        into ("$buildDir/lib" )
+        include('**/*.jar')
+        exclude("${archivesBaseName}.jar")
+        // This app is only for win64 system.
+        // Other native files are not required
+        exclude("jave-nativebin-linux*.jar")
+        exclude("jave-nativebin-osx*.jar")
+        exclude("jave-nativebin-win32*.jar")
+    }
+    // Copy exe from launch4j
+    copy {
+        from ("$project.buildDir/launch4j")
+        into (buildDir)
+        include('*.exe')
+    }
+}
+
+def buildJarVersion(buildDir) {
+    // Copy lib from launch4j
+    copy {
+        from ("$project.buildDir/launch4j/lib")
+        into ("$buildDir/lib" )
+        include('**/*.jar')
+        exclude("${archivesBaseName}.jar")
+    }
+    // Copy main jar
+    copy {
+        from ("$project.buildDir/launch4j/lib")
+        into ("$buildDir" )
+        include("${archivesBaseName}.jar")
+    }
+}
+
+// 生成可执行版本时需要用到classPath,这里主要把所有jar包路径拼成字符串放到manifest中。
+def getLibsClassPath() {
+    def path = ''
+    // gradle 3.4+
+    configurations.findByName('runtimeClasspath').getFiles().each {
+            path += "lib/${it.name} "
+    }
+    println "getLibsClassPath=$path"
+    return path;
+}
+
+def getGitVersion() {
+    // .git/HEAD描述当前目录所指向的分支信息，内容示例："ref: refs/heads/master\n"
+    def headFile = new File('.git/HEAD')
+    if (headFile.exists()) {
+        String[] strings = headFile.getText('UTF-8').split(" ");
+        if (strings.size() > 1) {
+            String refFilePath = '.git/' + strings[1];
+
+            // 根据HEAD读取当前指向的hash值，路径示例为：".git/refs/heads/master"
+            def refFile = new File(refFilePath.trim());
+
+            // 索引文件内容为hash值+"\n"，
+            // 示例："90312cd9157587d11779ed7be776e3220050b308\n"
+            return refFile.getText('UTF-8').trim()
+        }
+    } 
+    return "--unknow--"
+}

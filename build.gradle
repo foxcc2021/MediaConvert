@@ -1,0 +1,29 @@
+allprojects {
+    repositories {
+        mavenCentral()
+        jcenter()
+    }
+}
+
+subprojects {
+    apply plugin: 'java'
+    
+    dependencies {
+        testImplementation     'junit:junit:4.13'
+        
+        // Apache
+        implementation group: 'commons-io', name: 'commons-io', version: '2.8.0'
+        implementation group: 'commons-lang', name: 'commons-lang', version: '2.6'
+        
+        compile group: 'org.slf4j', name: 'slf4j-simple', version: '1.6.1'
+        
+        // The JAVE2 (Java Audio Video Encoder) 
+        // https://github.com/a-schild/jave2
+        compile group: 'ws.schild', name: 'jave-all-deps', version: '3.3.1'
+    }
+}
+
+wrapper {
+    gradleVersion = '6.8.3'
+}
+

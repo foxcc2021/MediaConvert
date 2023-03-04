@@ -1,0 +1,3 @@
+rootProject.name = 'MediaConvert'
+
+include 'app'
